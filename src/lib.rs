@@ -4,15 +4,15 @@
 
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-extern "C" {
-    pub fn alert(s: &str);
-}
+// #[wasm_bindgen]
+// extern "C" {
+//     pub fn alert(s: &str);
+// }
 
-#[wasm_bindgen]
-pub fn greet(name: &str) {
-    alert(&format!("Hello, {}!", name));
-}
+// #[wasm_bindgen]
+// pub fn greet(name: &str) {
+//     alert(&format!("Hello, {}!", name));
+// }
 
 #[wasm_bindgen]
 #[repr(u8)]
@@ -90,8 +90,9 @@ impl Universe {
         let height = 64;
 
         let cells = (0..width * height)
-            .map(|i| {
-                if i % 2 == 0 || i % 7 == 0 {
+            .map(|_i| {
+                let rand_byte: u8 = (js_sys::Math::random() * 256.0).floor() as u8;
+                if rand_byte % 2 == 0 || rand_byte % 7 == 0 {
                     Cell::Alive
                 } else {
                     Cell::Dead
