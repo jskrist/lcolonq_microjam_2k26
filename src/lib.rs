@@ -33,6 +33,10 @@ pub struct Universe {
 
 #[wasm_bindgen]
 impl Universe {
+    pub fn toggle_cell(&mut self, row: u32, column: u32) {
+        let idx = self.get_index(row, column);
+        self.cells.set(idx, !self.cells[idx]);
+    }
     pub fn tick(&mut self) {
         let mut next = self.cells.clone();
 
