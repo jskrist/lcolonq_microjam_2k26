@@ -5,7 +5,7 @@ import init, { Universe } from "./pkg/lcolonq_codejam.js";
 const wasm = await init("./pkg/lcolonq_codejam_bg.wasm");
 const memory = wasm.memory;
 
-const CELL_SIZE = 1; // px
+const CELL_SIZE = 5; // px
 const GRID_COLOR = "#0cd89b";
 const DEAD_COLOR = "#0cd89b";
 const ALIVE_COLOR = "#b61d7b";
@@ -32,7 +32,7 @@ const renderLoop = () => {
   fps.render();
   if(count >= 0) {
     universe.tick();
-    drawGrid();
+    // drawGrid();
     drawCells();
     count = 0;
   }
@@ -100,7 +100,7 @@ const drawCells = () => {
   const cells = new Uint8Array(memory.buffer, cellsPtr, width * height / 8);
 
   ctx.fillStyle = DEAD_COLOR;
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = ALIVE_COLOR;
   for (let row = 0; row < height; row++) {
@@ -142,6 +142,7 @@ const fps = new class {
     this.fps = document.getElementById("fps");
     this.frames = [];
     this.lastFrameTimeStamp = performance.now();
+    this.lastFPSRender = performance.now();
   }
 
   render() {
@@ -149,6 +150,7 @@ const fps = new class {
     // of frames per second.
     const now = performance.now();
     const delta = now - this.lastFrameTimeStamp;
+    const fps_render_duration = now - this.lastFPSRender;
     this.lastFrameTimeStamp = now;
     const fps = 1 / delta * 1000;
 
@@ -169,14 +171,17 @@ const fps = new class {
     }
     let mean = sum / this.frames.length;
 
-    // Render the statistics.
-    this.fps.textContent = `
-Frames per Second:
-         latest = ${Math.round(fps)}
-avg of last 100 = ${Math.round(mean)}
-min of last 100 = ${Math.round(min)}
-max of last 100 = ${Math.round(max)}
-`.trim();
+    if (fps_render_duration > 160) {
+      // Render the statistics.
+      this.fps.textContent = `
+  Frames per Second:
+          latest = ${Math.round(fps)}
+  avg of last 100 = ${Math.round(mean)}
+  min of last 100 = ${Math.round(min)}
+  max of last 100 = ${Math.round(max)}
+  `.trim();
+      this.lastFPSRender = now;
+    }
   }
 };
 
