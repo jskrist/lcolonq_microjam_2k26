@@ -65,15 +65,27 @@ impl Universe {
 
     fn live_neighbor_count(&self, row: u32, column: u32) -> u8 {
         let mut count = 0;
-        for delta_row in [self.height - 1, 0, 1].iter().cloned() {
-            for delta_col in [self.width - 1, 0, 1].iter().cloned() {
-                if delta_row == 0 && delta_col == 0 {
+        for delta_row in [-1, 0, 1].iter() {
+            for delta_col in [-1, 0, 1].iter() {
+                if *delta_row == 0 && *delta_col == 0 {
                     continue;
                 }
 
-                let neighbor_row = (row + delta_row) % self.height;
-                let neighbor_col = (column + delta_col) % self.width;
-                let idx = self.get_index(neighbor_row, neighbor_col);
+                let mut neighbor_row = row as i32 + *delta_row;
+                if neighbor_row < 0 {
+                    neighbor_row = neighbor_row + self.height as i32;
+                }
+                else if neighbor_row > self.height as i32 {
+                    neighbor_row = neighbor_row - self.height as i32;
+                }
+                let mut neighbor_col = column  as i32 + *delta_col;
+                if neighbor_col < 0 {
+                    neighbor_col = neighbor_col + self.width as i32;
+                }
+                else if neighbor_col > self.width as i32 {
+                    neighbor_col = neighbor_col - self.width as i32;
+                }
+                let idx = self.get_index(neighbor_row as u32, neighbor_col as u32);
                 count += self.cells[idx] as u8;
             }
         }
