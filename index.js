@@ -1,11 +1,11 @@
-import init, { Universe, Cell } from "./pkg/lcolonq_codejam.js";
+import init, { Universe } from "./pkg/lcolonq_codejam.js";
 
 // Initialize the wasm module (explicit wasm path) before using any exported
 // functions or types that rely on the `wasm` variable.
 const wasm = await init("./pkg/lcolonq_codejam_bg.wasm");
 const memory = wasm.memory;
 
-const CELL_SIZE = 5; // px
+const CELL_SIZE = 1; // px
 const GRID_COLOR = "#0cd89b";
 const DEAD_COLOR = "#0cd89b";
 const ALIVE_COLOR = "#b61d7b";
@@ -23,6 +23,7 @@ canvas.height = (CELL_SIZE + 1) * height + 1;
 canvas.width = (CELL_SIZE + 1) * width + 1;
 
 const ctx = canvas.getContext('2d');
+let im_data = ctx.getImageData(0, 0, width, height);
 
 let count = 0;
 let animationId = null;
@@ -98,8 +99,8 @@ const drawCells = () => {
   const cellsPtr = universe.cells();
   const cells = new Uint8Array(memory.buffer, cellsPtr, width * height / 8);
 
-  ctx.beginPath();
-
+  ctx.fillStyle = DEAD_COLOR;
+  ctx.fillRect(0, 0, width, height);
 
   ctx.fillStyle = ALIVE_COLOR;
   for (let row = 0; row < height; row++) {
@@ -116,23 +117,6 @@ const drawCells = () => {
       );
     }
   }
-  ctx.fillStyle = DEAD_COLOR;
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
-      const idx = getIndex(row, col);
-      if(bitIsSet(idx, cells)) {
-        continue
-      }
-      ctx.fillRect(
-        col * (CELL_SIZE + 1) + 1,
-        row * (CELL_SIZE + 1) + 1,
-        CELL_SIZE,
-        CELL_SIZE
-      );
-    }
-  }
-
-  ctx.stroke();
 };
 
 canvas.addEventListener("click", event => {
@@ -186,13 +170,13 @@ const fps = new class {
     let mean = sum / this.frames.length;
 
     // Render the statistics.
-//     this.fps.textContent = `
-// Frames per Second:
-//          latest = ${Math.round(fps)}
-// avg of last 100 = ${Math.round(mean)}
-// min of last 100 = ${Math.round(min)}
-// max of last 100 = ${Math.round(max)}
-// `.trim();
+    this.fps.textContent = `
+Frames per Second:
+         latest = ${Math.round(fps)}
+avg of last 100 = ${Math.round(mean)}
+min of last 100 = ${Math.round(min)}
+max of last 100 = ${Math.round(max)}
+`.trim();
   }
 };
 

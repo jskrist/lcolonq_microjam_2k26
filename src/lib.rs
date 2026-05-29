@@ -17,14 +17,6 @@ use fixedbitset::FixedBitSet;
 // }
 
 #[wasm_bindgen]
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Cell {
-    Dead = 0,
-    Alive = 1,
-}
-
-#[wasm_bindgen]
 pub struct Universe {
     width: u32,
     height: u32,
@@ -93,8 +85,8 @@ impl Universe {
     }
 
     pub fn new() -> Universe {
-        let width = 64;
-        let height = 64;
+        let width = 200;
+        let height = 200;
 
         let size = (width * height) as usize;
         let mut cells = FixedBitSet::with_capacity(size);
@@ -111,10 +103,6 @@ impl Universe {
         }
     }
 
-    pub fn render(&self) -> String {
-        self.to_string()
-    }
-
     pub fn width(&self) -> u32 {
         self.width
     }
@@ -126,10 +114,13 @@ impl Universe {
     pub fn cells(&self) -> *const u32 {
         self.cells.as_slice().as_ptr() as *const u32
     }
+
+    pub fn render(&self) -> String {
+        self.to_string()
+    }
 }
 
 use std::fmt;
-
 impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for line in self.cells.as_slice().chunks(self.width as usize) {
@@ -143,3 +134,4 @@ impl fmt::Display for Universe {
         Ok(())
     }
 }
+
