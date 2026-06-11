@@ -3,7 +3,12 @@
 // https://rustwasm.github.io/book/game-of-life/implementing.html
 extern crate fixedbitset;
 
-use js_sys::Null;
+// use crate::utils::character;
+// use crate::utils::character::CharacterControlMode;
+// use rapier_testbed2d::Testbed;
+use rapier2d::prelude::*;
+
+// use rapier2d::control::{KinematicCharacterController};
 use wasm_bindgen::prelude::*;
 use fixedbitset::FixedBitSet;
 
@@ -159,19 +164,125 @@ impl fmt::Display for Universe {
 // Complications:
 // wind?
 
+#[wasm_bindgen]
+pub struct Environment {
+    rigid_body_set: RigidBodySet,
+    collider_set: ColliderSet,
+    gravity: Vec2,
+    integration_parameters: IntegrationParameters,
+    physics_pipeline: PhysicsPipeline,
+    island_manager: IslandManager,
+    broad_phase: DefaultBroadPhase,
+    narrow_phase: NarrowPhase,
+    impulse_joint_set: ImpulseJointSet,
+    multibody_joint_set: MultibodyJointSet,
+    ccd_solver: CCDSolver,
+    physics_hooks: (),
+    event_handler: (),
+    pendulum: Pendulum,
+}
 
+#[wasm_bindgen]
+impl Environment {
+    pub fn new() -> Environment {
+        let rigid_body_set = RigidBodySet::new();
+        let mut collider_set = ColliderSet::new();
+
+        /* Create the ground. */
+        let ground_collider = ColliderBuilder::cuboid(100.0, 0.1).build();
+        collider_set.insert(ground_collider);
+
+        /* Create other structures necessary for the simulation. */
+        let gravity: Vec2 = vector![0.0, -9.81].into();
+        let integration_parameters = IntegrationParameters::default();
+        let physics_pipeline = PhysicsPipeline::new();
+        let island_manager = IslandManager::new();
+        let broad_phase = DefaultBroadPhase::new();
+        let narrow_phase = NarrowPhase::new();
+        let impulse_joint_set = ImpulseJointSet::new();
+        let multibody_joint_set = MultibodyJointSet::new();
+        let ccd_solver = CCDSolver::new();
+        let physics_hooks = ();
+        let event_handler = ();
+
+       Environment {
+            rigid_body_set,
+            collider_set,
+            gravity,
+            integration_parameters,
+            physics_pipeline,
+            island_manager,
+            broad_phase,
+            narrow_phase,
+            impulse_joint_set,
+            multibody_joint_set,
+            ccd_solver,
+            physics_hooks,
+            event_handler,
+            pendulum: Pendulum::new(2.0, 0.0)
+        }
+    }
+    pub fn step(& mut self, x: f32) {
+
+        // update the pivot location
+        self.set_pivot_position(x);
+
+        // pivot_body.set_next_kinematic_translation(Vec2{
+        //     x: self.pendulum.pivot_position[0] as f32,
+        //     y: self.pendulum.pivot_position[1] as f32});
+        // let pos = pivot_body.translation();
+        // pivot_body.set_position(Pose2 { rotation: Rot2::new(0.0), 
+        //     translation: Vec2::new(pos[0], pos[1]) }, true);
+
+        self.physics_pipeline.step(
+            self.gravity,
+            &self.integration_parameters,
+            &mut self.island_manager,
+            &mut self.broad_phase,
+            &mut self.narrow_phase,
+            &mut self.rigid_body_set,
+            &mut self.collider_set,
+            &mut self.impulse_joint_set,
+            &mut self.multibody_joint_set,
+            &mut self.ccd_solver,
+            &self.physics_hooks,
+            &self.event_handler,
+        );
+    }
+    pub fn get_pivot_pos(& self) -> Vec<f32> {
+        if let Some(body) = self.rigid_body_set.get(self.pendulum.pivot) {
+            body.position().translation.to_array().to_vec()
+        }
+        else {
+            vec![0.0, 0.0]
+        }
+    }
+    pub fn get_ball_pos(& self) -> Vec<f32> {
+        if let Some(body) = self.rigid_body_set.get(self.pendulum.ball) {
+            body.position().translation.to_array().to_vec()
+        }
+        else {
+            vec![0.0, 0.0]
+        }
+    }
+    pub fn set_pivot_position(&mut self, x: f32) {
+        if let Some(body) = self.rigid_body_set.get_mut(self.pendulum.pivot) {
+            let pos = body.translation();
+            body.set_position(
+                Pose2::translation(x, pos.y),
+                true, // wake up the body if sleeping
+            );
+        }
+    }
+}
 
 #[wasm_bindgen]
 pub struct Pendulum {
     length: f64,
     mass: f64,
     angle: f64,
-    pivot_velocity: [f64;2],
-    mass_velocity: [f64;2],
-    angular_velocity: f64,
-    pivot_position: [f64;2],
-    prev_pivot_position: [f64;2],
-    prev_pivot_velocity: [f64;2],
+    pivot: RigidBodyHandle,
+    ball: RigidBodyHandle,
 }
 
 #[wasm_bindgen]
@@ -180,279 +291,93 @@ impl Pendulum {
         // create a new Pendulum with the given length and mass
         // It will start pointing straight up, with a small random
         // nudge to the mass
-
-        const MAX_X_VEL: f64 = 1E-2; // m/s
-        let mass_vel_x= (js_sys::Math::random() * 2.0 - 1.0) * MAX_X_VEL;
-
         Pendulum {
             length,
             mass,
             angle: 90.1 * PI/180.0,
-            pivot_velocity: [0.0, 0.0],
-            mass_velocity: [mass_vel_x, 0.0],
-            angular_velocity: 0.1,
-            pivot_position: [0.0, 0.0],
-            prev_pivot_velocity: [0.0, 0.0],
-            prev_pivot_position: [0.0, 0.0],
-        }
-    }
-
-    pub fn tick(&mut self, dt: f64) {
-        // run a simulation for the given dt
-        const G: f64 = 9.81; // m/s
-
-        // Simulation variables (initial state)
-        // use stored angular velocity so the state persists between ticks
-        let mut omega = self.angular_velocity;       // pendulum angular velocity [rad/s]
-
-        // Determine accelerations using a simple pendulum model with moving pivot.
-        // mass position (relative to pivot): r = [cos(theta), sin(theta)] * length
-        // approximate angular acceleration: -g/l * sin(theta) + pivot_effects - damping
-        let cost = js_sys::Math::cos(self.angle);
-        let sint = js_sys::Math::sin(self.angle);
-
-        // pivot movement: update pivot position from pivot_velocity (set externally)
-        // Determine current pivot velocity. If JS moved the pivot by calling
-        // `set_pivot_position()` (so `pivot_position` changed since last tick),
-        // derive velocity from that positional change. Otherwise, use
-        // `pivot_velocity` (which may be set directly by JS) and advance
-        // pivot_position by that velocity.
-        let mut curr_pvx = self.pivot_velocity[0];
-        let mut curr_pvy = self.pivot_velocity[1];
-        if dt > 0.0 {
-            let dx = self.pivot_position[0] - self.prev_pivot_position[0];
-            let dy = self.pivot_position[1] - self.prev_pivot_position[1];
-            let moved = dx.abs() > 1e-12 || dy.abs() > 1e-12;
-            if moved {
-                curr_pvx = dx / dt;
-                curr_pvy = dy / dt;
-            } else {
-                // no explicit position change; advance pivot by velocity
-                self.pivot_position[0] += self.pivot_velocity[0] * dt;
-                self.pivot_position[1] += self.pivot_velocity[1] * dt;
-            }
-            // cap velocity derived from positional changes to avoid huge deltas
-            const MAX_PIVOT_VEL: f64 = 20.0; // m/s, adjust as needed
-            if curr_pvx.is_finite() {
-                if curr_pvx > MAX_PIVOT_VEL { curr_pvx = MAX_PIVOT_VEL }
-                if curr_pvx < -MAX_PIVOT_VEL { curr_pvx = -MAX_PIVOT_VEL }
-            }
-            if curr_pvy.is_finite() {
-                if curr_pvy > MAX_PIVOT_VEL { curr_pvy = MAX_PIVOT_VEL }
-                if curr_pvy < -MAX_PIVOT_VEL { curr_pvy = -MAX_PIVOT_VEL }
-            }
-        }
-
-        // approximate pivot acceleration from change in velocity
-        let mut pax = 0.0;
-        let mut pay = 0.0;
-        if dt > 0.0 {
-            pax = (curr_pvx - self.prev_pivot_velocity[0]) / dt;
-            pay = (curr_pvy - self.prev_pivot_velocity[1]) / dt;
-        }
-        // store current velocity/position for next step
-        self.prev_pivot_velocity[0] = curr_pvx;
-        self.prev_pivot_velocity[1] = curr_pvy;
-        self.prev_pivot_position[0] = self.pivot_position[0];
-        self.prev_pivot_position[1] = self.pivot_position[1];
-        // reflect derived current velocity back into state
-        self.pivot_velocity[0] = curr_pvx;
-        self.pivot_velocity[1] = curr_pvy;
-
-        // forcing from pivot acceleration projected onto pendulum direction (computed below)
-
-        // damping
-        let damping = 0.05;
-
-        // angular acceleration
-        // gravity term: projection of gravity (0,-G) onto tangent [-sin, cos] -> -G * cos(theta)
-        let gravity_term = - (G / self.length) * cost;
-        // pivot contribution: - (a_p · e_t) / l where e_t = [-sin, cos]
-        let pivot_contrib = (pax * sint - pay * cost) / self.length;
-        // theta_ddot = -g*cos/l + (pax*sin - pay*cos)/l - damping*omega
-        let ang_acc = gravity_term + pivot_contrib - damping * omega;
-
-        // Euler integration for angle and angular velocity
-        omega += ang_acc * dt;
-        self.angle += omega * dt;
-        self.angular_velocity = omega;
-
-        // update mass velocity from kinematics: v_mass = v_pivot + d/dt( r )
-        // where d/dt( r ) = length * [-sin(theta)*omega, cos(theta)*omega]
-        let vr_x = - self.length * js_sys::Math::sin(self.angle) * omega;
-        let vr_y =   self.length * js_sys::Math::cos(self.angle) * omega;
-        self.mass_velocity[0] = self.pivot_velocity[0] + vr_x;
-        self.mass_velocity[1] = self.pivot_velocity[1] + vr_y;
-
-        // Range check
-        if self.angle > PI {
-            self.angle -= 2.0 * PI;
-        }
-        if self.angle <= -PI {
-            self.angle += 2.0 * PI;
+            pivot: RigidBodyHandle::default(),
+            ball: RigidBodyHandle::default(),
         }
     }
     pub fn angle(&self) -> f64 {
         self.angle
     }
-    pub fn length(&self) -> f64 {
-        self.length
+    pub fn get_pivot_position(&self, env: Environment) -> Vec<f32> {
+        let pivot_body = env.rigid_body_set[self.pivot].clone();
+        pivot_body.translation().to_array().to_vec()
     }
-    pub fn pivot_position(&self) -> Vec<f64> {
-        self.pivot_position.to_vec()
+    pub fn set_pivot_position(&mut self, mut env: Environment, x: f32, y: f32) {
+        let pivot_body = &mut env.rigid_body_set[self.pivot];
+        pivot_body.set_next_kinematic_translation(Vec2 { x, y });
     }
-    pub fn set_pivot_position(&mut self, x: f64, y: f64) {
-        // record previous position so `tick()` can compute velocity = (pos-pos_prev)/dt
-        self.prev_pivot_position[0] = self.pivot_position[0];
-        self.prev_pivot_position[1] = self.pivot_position[1];
-        self.pivot_position[0] = x;
-        self.pivot_position[1] = y;
+    pub fn get_ball_position(&self, env: Environment) -> Vec<f32> {
+        let ball_body = &env.rigid_body_set[self.ball];
+        ball_body.translation().to_array().into()
     }
 }
 
-
-// use crate::utils::character;
-// use crate::utils::character::CharacterControlMode;
-// use rapier_testbed2d::Testbed;
-use rapier2d::control::{KinematicCharacterController, PidController};
-use rapier2d::prelude::*;
-
-// pub fn ball_balance() {
-//     /*
-//      * World
-//      */
-//     // let mut world = PhysicsWorld::new();
-
-//     /*
-//      * Ground
-//      */
-//     let ground_length = 10.0;
-//     let ground_height = 0.1;
-//     let wall_height = 0.25;
-//     let wall_thickness = ground_height;
-
-//     // Floor
-//     let rigid_body = RigidBodyBuilder::fixed().translation(Vector::new(0.0, -ground_height));
-//     let collider = ColliderBuilder::cuboid(ground_length, ground_height);
-//     let _ = world.insert(rigid_body, collider);
-//     // Left wall
-//     let rigid_body = RigidBodyBuilder::fixed()
-//         .translation(Vector::new(-ground_length - wall_thickness, wall_height));
-//     let collider = ColliderBuilder::cuboid(wall_thickness, wall_height);
-//     let _ = world.insert(rigid_body, collider);
-//     // right wall
-//     let rigid_body = RigidBodyBuilder::fixed()
-//         .translation(Vector::new(ground_length + wall_thickness, wall_height));
-//     let collider = ColliderBuilder::cuboid(wall_thickness, wall_height);
-//     let _ = world.insert(rigid_body, collider);
-
-//     /*
-//      * Character we will control manually.
-//      */
-//     let character_height = 0.25;
-//     let character_width = 0.125;
-//     let rigid_body =
-//         RigidBodyBuilder::kinematic_position_based()
-//         .translation(Vector::new(0.0, character_height));
-//     let collider = ColliderBuilder::cuboid(character_width, character_height);
-//     let (character_handle, _) = world.insert(rigid_body, collider);
-
-//     // rod
-//     let rod_length = 1.0;
-
-//     /*
-//      * Tethered Ball
-//      */
-//     let rad = 0.125;
-
-//     let rigid_body =
-//         RigidBodyBuilder::new(RigidBodyType::Dynamic)
-//         .translation(Vector::new(0.0, 2.0 * rod_length + character_height))
-//         .linear_damping(1.125 as f32);
-//     let collider = ColliderBuilder::ball(rad).sensor(true);
-//     let (child_handle, _) = world.insert(rigid_body, collider);
-
-//     let joint = RevoluteJointBuilder::new()
-//         .local_anchor2(Vector::new(0.0, -2.0 * rod_length));
-//     world.insert_impulse_joint(character_handle, child_handle, joint);
-
-//     /*
-//      * Callback to update the character based on user inputs.
-//      */
-//     let mut control_mode = CharacterControlMode::Kinematic(0.075);
-//     let mut controller = KinematicCharacterController::default();
-//     let mut pid = PidController::default();
-
-//     testbed.add_callback(move |graphics, physics, _, _| {
-//         if let Some(graphics) = graphics {
-//             character::update_character(
-//                 graphics,
-//                 physics,
-//                 &mut control_mode,
-//                 &mut controller,
-//                 &mut pid,
-//                 character_handle,
-//             );
-//         }
-//     });
-
-//     // /*
-//     //  * Set up the testbed.
-//     //  */
-//     // testbed.set_physics_world(world);
-//     // testbed.look_at(Vec2::new(0.0, 1.0), 100.0);
-// }
-
 #[wasm_bindgen]
-pub fn main() -> f32 {
-    let mut rigid_body_set = RigidBodySet::new();
-    let mut collider_set = ColliderSet::new();
-
-    /* Create the ground. */
-    let collider = ColliderBuilder::cuboid(100.0, 0.1).build();
-    collider_set.insert(collider);
-
-    /* Create the bouncing ball. */
-    let rigid_body = RigidBodyBuilder::dynamic()
-        .translation(vector![0.0, 10.0].into())
-        .build();
-    let collider = ColliderBuilder::ball(0.5).restitution(0.7).build();
-    let ball_body_handle = rigid_body_set.insert(rigid_body);
-    collider_set.insert_with_parent(collider, ball_body_handle, &mut rigid_body_set);
+pub fn main(env: &mut Environment) -> f32 {
+    // // create the simulation environment
+    // let mut env = Environment::new();
 
     /* Create other structures necessary for the simulation. */
-    let gravity: Vec2 = vector![0.0, -9.81].into();
-    let integration_parameters = IntegrationParameters::default();
-    let mut physics_pipeline = PhysicsPipeline::new();
-    let mut island_manager = IslandManager::new();
-    let mut broad_phase = DefaultBroadPhase::new();
-    let mut narrow_phase = NarrowPhase::new();
-    let mut impulse_joint_set = ImpulseJointSet::new();
-    let mut multibody_joint_set = MultibodyJointSet::new();
-    let mut ccd_solver = CCDSolver::new();
-    let physics_hooks = ();
-    let event_handler = ();
-
-    let mut ball_body = &RigidBodyBuilder::dynamic().build();
+    // let mut ball_body = &RigidBodyBuilder::dynamic().build();
     /* Run the game loop, stepping the simulation once per frame. */
-    for _ in 0..200 {
-        physics_pipeline.step(
-            gravity,
-            &integration_parameters,
-            &mut island_manager,
-            &mut broad_phase,
-            &mut narrow_phase,
-            &mut rigid_body_set,
-            &mut collider_set,
-            &mut impulse_joint_set,
-            &mut multibody_joint_set,
-            &mut ccd_solver,
-            &physics_hooks,
-            &event_handler,
-        );
+    // for _ in 0..200 {
+    //     env.step();
 
-        ball_body = &rigid_body_set[ball_body_handle];
-        println!("Ball altitude: {}", ball_body.translation().y);
-    }
+    //     ball_body = &env.rigid_body_set[ball_body_handle];
+    //     println!("Ball altitude: {}", ball_body.translation().y);
+    // }
+    let ball_body = &env.rigid_body_set[env.pendulum.ball];
     ball_body.translation().y
+}
+
+#[wasm_bindgen]
+pub fn add_bodies(env: &mut Environment) {
+
+    let character_height = 0.25;
+    let character_width = 0.125;
+    let rigid_body =
+        RigidBodyBuilder::kinematic_position_based()
+        .translation(Vector::new(0.0, character_height));
+    let collider = ColliderBuilder::cuboid(character_width, character_height);
+
+    let character_rb_handle = env.rigid_body_set.insert(rigid_body);
+    env.collider_set.insert_with_parent(collider, character_rb_handle, &mut env.rigid_body_set);
+
+    // rod
+    let rod_length = 1.0;
+
+    /*
+     * Tethered Ball
+     */
+    let rad = 0.125;
+
+    let rigid_body =
+        RigidBodyBuilder::new(RigidBodyType::Dynamic)
+        .translation(Vector::new(0.1, 2.0 * rod_length + character_height))
+        .linear_damping(1.125 as f32);
+    let collider = ColliderBuilder::ball(rad).sensor(true);
+
+    let ball_rb_handle = env.rigid_body_set.insert(rigid_body);
+    env.collider_set.insert_with_parent(collider, ball_rb_handle, &mut env.rigid_body_set);
+
+    let joint = RevoluteJointBuilder::new()
+        .local_anchor2(Vector::new(0.0, -2.0 * rod_length));
+    env.impulse_joint_set.insert(character_rb_handle, ball_rb_handle, joint, true);
+
+    env.pendulum.pivot = character_rb_handle;
+    env.pendulum.ball = ball_rb_handle;
+
+    // /* Create the bouncing ball. */
+    // let rigid_body = RigidBodyBuilder::dynamic()
+    //     .translation(vector![0.0, 10.0].into())
+    //     .build();
+    // let collider = ColliderBuilder::ball(0.5).restitution(0.7).build();
+    // let ball_body_handle = env.rigid_body_set.insert(rigid_body);
+    // env.collider_set.insert_with_parent(collider, ball_body_handle, &mut env.rigid_body_set);
+
+    // env.ball_handle = ball_body_handle;
 }
