@@ -7,14 +7,10 @@ const wasm = await init("./pkg/lcolonq_codejam_bg.wasm");
 
 // Construct the environment and create a pendulum.
 const env = Environment.new();
-const rod_length = 2.0;
-const mass = 1.0;
-const pendulum = Pendulum.new(rod_length, mass);
-env.pendulum = pendulum;
 add_bodies(env);
 const width = 800;
 const height = 500;
-const y_divs = (rod_length * 2) + 1;
+const y_divs = (env.pendulum.get_length() * 2) + 1;
 const grid_size = height / y_divs;
 
 // Give the canvas room for all the elements

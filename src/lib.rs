@@ -142,7 +142,7 @@ impl Universe {
     }
 }
 
-use std::{f64::consts::PI, fmt};
+use std::{fmt};
 impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for line in self.cells.as_slice().chunks(self.width as usize) {
@@ -179,7 +179,7 @@ pub struct Environment {
     ccd_solver: CCDSolver,
     physics_hooks: (),
     event_handler: (),
-    pendulum: Pendulum,
+    pub pendulum: Pendulum,
 }
 
 #[wasm_bindgen]
@@ -219,20 +219,13 @@ impl Environment {
             ccd_solver,
             physics_hooks,
             event_handler,
-            pendulum: Pendulum::new(2.0, 0.0)
+            pendulum: Pendulum::new(2.0)
         }
     }
     pub fn step(& mut self, x: f32) {
 
         // update the pivot location
         self.set_pivot_position(x);
-
-        // pivot_body.set_next_kinematic_translation(Vec2{
-        //     x: self.pendulum.pivot_position[0] as f32,
-        //     y: self.pendulum.pivot_position[1] as f32});
-        // let pos = pivot_body.translation();
-        // pivot_body.set_position(Pose2 { rotation: Rot2::new(0.0), 
-        //     translation: Vec2::new(pos[0], pos[1]) }, true);
 
         self.physics_pipeline.step(
             self.gravity,
@@ -277,30 +270,24 @@ impl Environment {
 }
 
 #[wasm_bindgen]
+#[derive(Clone, Copy)]
 pub struct Pendulum {
-    length: f64,
-    mass: f64,
-    angle: f64,
+    pub length: f32,
     pivot: RigidBodyHandle,
     ball: RigidBodyHandle,
 }
 
 #[wasm_bindgen]
 impl Pendulum {
-    pub fn new(length: f64, mass: f64) -> Pendulum {
+    pub fn new(length: f32) -> Pendulum {
         // create a new Pendulum with the given length and mass
         // It will start pointing straight up, with a small random
         // nudge to the mass
         Pendulum {
             length,
-            mass,
-            angle: 90.1 * PI/180.0,
             pivot: RigidBodyHandle::default(),
             ball: RigidBodyHandle::default(),
         }
-    }
-    pub fn angle(&self) -> f64 {
-        self.angle
     }
     pub fn get_pivot_position(&self, env: Environment) -> Vec<f32> {
         let pivot_body = env.rigid_body_set[self.pivot].clone();
@@ -314,24 +301,9 @@ impl Pendulum {
         let ball_body = &env.rigid_body_set[self.ball];
         ball_body.translation().to_array().into()
     }
-}
-
-#[wasm_bindgen]
-pub fn main(env: &mut Environment) -> f32 {
-    // // create the simulation environment
-    // let mut env = Environment::new();
-
-    /* Create other structures necessary for the simulation. */
-    // let mut ball_body = &RigidBodyBuilder::dynamic().build();
-    /* Run the game loop, stepping the simulation once per frame. */
-    // for _ in 0..200 {
-    //     env.step();
-
-    //     ball_body = &env.rigid_body_set[ball_body_handle];
-    //     println!("Ball altitude: {}", ball_body.translation().y);
-    // }
-    let ball_body = &env.rigid_body_set[env.pendulum.ball];
-    ball_body.translation().y
+    pub fn get_length(&self) -> f32 {
+        self.length
+    }
 }
 
 #[wasm_bindgen]
@@ -348,7 +320,7 @@ pub fn add_bodies(env: &mut Environment) {
     env.collider_set.insert_with_parent(collider, character_rb_handle, &mut env.rigid_body_set);
 
     // rod
-    let rod_length = 1.0;
+    let rod_length = env.pendulum.length;
 
     /*
      * Tethered Ball
@@ -357,27 +329,19 @@ pub fn add_bodies(env: &mut Environment) {
 
     let rigid_body =
         RigidBodyBuilder::new(RigidBodyType::Dynamic)
-        .translation(Vector::new(0.1, 2.0 * rod_length + character_height))
-        .linear_damping(1.125 as f32);
+        .translation(Vector::new(0.1, rod_length + character_height))
+        .linear_damping(1.25);
+        // .angular_damping(1000.0);
+        // .linear_damping(0.01 as f32);
     let collider = ColliderBuilder::ball(rad).sensor(true);
 
     let ball_rb_handle = env.rigid_body_set.insert(rigid_body);
     env.collider_set.insert_with_parent(collider, ball_rb_handle, &mut env.rigid_body_set);
 
     let joint = RevoluteJointBuilder::new()
-        .local_anchor2(Vector::new(0.0, -2.0 * rod_length));
+        .local_anchor2(Vector::new(0.0, -rod_length));
     env.impulse_joint_set.insert(character_rb_handle, ball_rb_handle, joint, true);
 
     env.pendulum.pivot = character_rb_handle;
     env.pendulum.ball = ball_rb_handle;
-
-    // /* Create the bouncing ball. */
-    // let rigid_body = RigidBodyBuilder::dynamic()
-    //     .translation(vector![0.0, 10.0].into())
-    //     .build();
-    // let collider = ColliderBuilder::ball(0.5).restitution(0.7).build();
-    // let ball_body_handle = env.rigid_body_set.insert(rigid_body);
-    // env.collider_set.insert_with_parent(collider, ball_body_handle, &mut env.rigid_body_set);
-
-    // env.ball_handle = ball_body_handle;
 }
