@@ -1,4 +1,4 @@
-import init, { Pendulum, Environment, add_bodies } from "./pkg/lcolonq_codejam.js";
+import init, { Environment } from "./pkg/lcolonq_codejam.js";
 
 // Initialize the wasm module (explicit wasm path) before using any exported
 // functions or types that rely on the `wasm` variable.
@@ -7,10 +7,10 @@ const wasm = await init("./pkg/lcolonq_codejam_bg.wasm");
 
 // Construct the environment and create a pendulum.
 const env = Environment.new();
-add_bodies(env);
-const width = 800;
-const height = 500;
-const y_divs = (env.pendulum.get_length() * 2) + 1;
+env.add_bodies();
+const width = 240;
+const height = 160;
+const y_divs = (env.pendulum.get_length() * 2) + 2;
 const grid_size = height / y_divs;
 
 // Give the canvas room for all the elements
@@ -19,40 +19,41 @@ canvas.height = height;
 canvas.width = width;
 
 const ctx = canvas.getContext('2d');
-
-let count = 0;
-let animationId = null;
+ctx.fillStyle = "white";
+ctx.fillRect(0, 0, canvas.width, canvas.height);
 
 let mouse_pos = [0, 0];
 let rect = canvas.getBoundingClientRect();
 
-document.addEventListener('mousemove', function(event) {
+function mouse_move_fcn(event) {
     mouse_pos = [event.clientX - rect.left - canvas.width/2,
       event.clientY - rect.top - canvas.height/2];
     mouse_pos[0] = mouse_pos[0] / grid_size;
     mouse_pos[1] = mouse_pos[1] / grid_size;
-});
+    env.set_pivot_position(mouse_pos[0]);
+}
 
-const renderLoop = () => {
-  if(count >= 1E0) {
+document.addEventListener('mousemove', mouse_move_fcn);
+
+let start_time = 0;
+function renderLoop(current_time) {
+  if(current_time) {
+    let dt = current_time - start_time;
+    start_time = current_time;
+    env.set_dt(dt / 1000.0);
     env.step(mouse_pos[0]);
-
+    console.log("fps: " + 1000/dt)
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawPendulum();
-    count = 0;
   }
-  count += 1;
-
-  animationId = requestAnimationFrame(renderLoop);
-};
-
-const isPaused = () => {
-  return animationId === null;
+  requestAnimationFrame(renderLoop);
 };
 
 const play = () => {
-  renderLoop();
+  for(let i = 0; i < 1; i++) {
+    renderLoop();
+  }
 };
 
 let btn_x = 0;
@@ -69,14 +70,18 @@ const drawStartButton = () => {
 }
 drawStartButton();
 
-canvas.addEventListener('click', function(event) {
+function click_fcn(event) {
   let click_x = event.clientX - rect.left;
   let click_y = (event.clientY - rect.top)
   if(click_x > btn_x && click_x < btn_x + btn_width && 
     click_y > btn_y && click_y < btn_y + btn_height) {
       play();
+      mouse_move_fcn(event);
+      canvas.removeEventListener('click', click_fcn);
   }
-});
+}
+
+canvas.addEventListener('click', click_fcn);
 
 const drawPendulum = () => {
   let ball_pos = env.get_ball_pos();
@@ -101,6 +106,10 @@ const drawPendulum = () => {
   // draw the mass at the end of the pendulum
   ctx.beginPath();
   ctx.arc(x, y, pend_radius, 0, 2 * Math.PI);
-  ctx.fillStyle = "green";
+  let ball_color = "green";
+  if(y > o_y) {
+    ball_color = "red";
+  }
+  ctx.fillStyle = ball_color;
   ctx.fill();
 };
