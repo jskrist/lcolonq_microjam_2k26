@@ -12,23 +12,30 @@ const width = 240;
 const height = 160;
 const y_divs = (env.pendulum.get_length() * 2) + 2;
 const grid_size = height / y_divs;
-
-// Give the canvas room for all the elements
 const canvas = document.getElementById("canvas");
 canvas.height = height;
 canvas.width = width;
-
-let power_level = 0.5;
-let countdown = 20;
 const ctx = canvas.getContext('2d');
-drawBackground();
-drawCountdown();
-drawPowerBar();
-drawPendulum();
+const rect = canvas.getBoundingClientRect();
 
-let gameover = false;
-let mouse_pos = [0, 0];
-let rect = canvas.getBoundingClientRect();
+let power_level = null;
+let countdown = null;
+let gameover = null;
+let mouse_pos = null;
+
+function reset() {
+  power_level = 0.5;
+  countdown = 20;
+  env.reset_scene();
+  drawBackground();
+  drawCountdown();
+  drawPowerBar();
+  drawPendulum();
+
+  gameover = false;
+  mouse_pos = [0, 0];
+}
+reset();
 
 function mouse_move_fcn(event) {
     mouse_pos = [event.clientX - rect.left - canvas.width/2,
@@ -158,8 +165,8 @@ function message_handler(event) {
   switch(event.data.op) {
     case 'start':
       let grav_factor = mapRange(event.data.difficulty, 0, 100, 0, 5);
-      console.log("grav_factor: " + grav_factor);
       env.set_gravity_factor(grav_factor);
+      reset();
       play();
       window.parent.postMessage({op: "started", verb: "Balance!"});
       break;
@@ -187,7 +194,9 @@ function update_power_bar() {
   let scale = 0.025;
   power_level += (scale * direction);
   power_level = Math.max(Math.min(power_level, 1), 0);
-  setTimeout(update_power_bar, 120);
+  if(!gameover) {
+    setTimeout(update_power_bar, 120);
+  }
 }
 
 window.addEventListener("message", message_handler);

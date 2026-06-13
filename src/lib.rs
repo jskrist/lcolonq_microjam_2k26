@@ -139,13 +139,24 @@ impl Environment {
             );
         }
     }
+    fn set_ball_position(&mut self, x: f32, y: f32) {
+        if let Some(body) = self.rigid_body_set.get_mut(self.pendulum.ball) {
+            body.set_position(
+                Pose2::translation(x, y),
+                true, // wake up the body if sleeping
+            );
+        }
+    }
+    pub fn reset_scene(&mut self) {
+        self.set_pivot_position(0.0);
+        self.set_ball_position(0.1, self.pendulum.length);
+    }
     pub fn add_bodies(&mut self) {
 
-        let character_height = 0.25;
+        let character_height = 0.0;
         let character_width = 0.125;
         let rigid_body =
-            RigidBodyBuilder::kinematic_position_based()
-            .translation(Vector::new(0.0, character_height));
+            RigidBodyBuilder::kinematic_position_based();
         let collider = ColliderBuilder::cuboid(character_width, character_height).mass(0.001);
         let character_rb_handle = self.rigid_body_set.insert(rigid_body);
         self.collider_set.insert_with_parent(collider, character_rb_handle, &mut self.rigid_body_set);
