@@ -18,16 +18,23 @@ const canvas = document.getElementById("canvas");
 canvas.height = height;
 canvas.width = width;
 
+let power_level = 0.5;
+let countdown = 20;
 const ctx = canvas.getContext('2d');
-ctx.fillStyle = "white";
-ctx.fillRect(0, 0, canvas.width, canvas.height);
+drawBackground();
+drawCountdown();
+drawPowerBar();
+drawPendulum();
 
+let gameover = false;
 let mouse_pos = [0, 0];
 let rect = canvas.getBoundingClientRect();
 
 function mouse_move_fcn(event) {
     mouse_pos = [event.clientX - rect.left - canvas.width/2,
       event.clientY - rect.top - canvas.height/2];
+
+    mouse_pos[0] = Math.min(Math.max(mouse_pos[0], -canvas.width/2), canvas.width/2);
     mouse_pos[0] = mouse_pos[0] / grid_size;
     mouse_pos[1] = mouse_pos[1] / grid_size;
     env.set_pivot_position(mouse_pos[0]);
@@ -38,38 +45,32 @@ document.addEventListener('mousemove', mouse_move_fcn);
 let start_time = 0;
 function renderLoop(current_time) {
   if(current_time) {
-    let dt = current_time - start_time;
+    // limit the simulations to at most 100ms time steps
+    let dt = Math.min(current_time - start_time, 100);
     start_time = current_time;
     env.set_dt(dt / 1000.0);
     env.step(mouse_pos[0]);
-    console.log("fps: " + 1000/dt)
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // console.log("fps: " + 1000/dt)
+    drawBackground();
+    drawCountdown();
+    drawPowerBar();
     drawPendulum();
   }
-  requestAnimationFrame(renderLoop);
-};
-
-const play = () => {
-  for(let i = 0; i < 1; i++) {
-    renderLoop();
+  if(!gameover) {
+    requestAnimationFrame(renderLoop);
   }
 };
 
-let btn_x = 0;
-let btn_y = 0;
+function play() {
+  setTimeout(update_power_bar, 120);
+  setTimeout(update_countdown, 1000);
+  renderLoop();
+};
+
 const btn_width = 40;
 const btn_height = 20;
-const drawStartButton = () => {
-  const radii = 5;
-  btn_x = canvas.width/2 - btn_width/2;
-  btn_y = canvas.height/2 - btn_height/2;
-  ctx.fillStyle = "blue";
-  ctx.roundRect(btn_x, btn_y, btn_width, btn_height, radii)
-  ctx.fill();
-}
-drawStartButton();
-
+let btn_x = canvas.width/2 - btn_width/2;
+let btn_y = canvas.height/2 - btn_height/2;
 function click_fcn(event) {
   let click_x = event.clientX - rect.left;
   let click_y = (event.clientY - rect.top)
@@ -80,10 +81,44 @@ function click_fcn(event) {
       canvas.removeEventListener('click', click_fcn);
   }
 }
-
 canvas.addEventListener('click', click_fcn);
 
-const drawPendulum = () => {
+function drawBackground() {
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawCountdown() {
+  ctx.fillStyle = "black";
+  ctx.font = "16px Consolas";
+  ctx.fillText(String(countdown).padStart(2, '0'), 10, 20);
+}
+
+function drawPowerBar() {
+  ctx.fillStyle = "gray";
+  let powerbar_w = 10;
+  const num_cells = 20;
+  const cell_height = canvas.height / num_cells;
+  let h = 0;
+  ctx.fillStyle = "gray";
+  ctx.fillRect(canvas.width - powerbar_w, 0, powerbar_w, canvas.height);
+  let color = "red";
+  // for(let i = 0; i < num_cells; i++) {
+    let i = Math.floor(power_level * num_cells);
+    h = canvas.height - (Math.max(i, 1) * cell_height);
+    ctx.beginPath();
+    ctx.rect(canvas.width - powerbar_w, h, powerbar_w, cell_height);
+    if((i / num_cells) >= 0.5){
+      color = "green";
+    }
+    // console.log("power_level: " + power_level + "\n val: " + (i / num_cells) + "\ncolor: " + color)
+    ctx.fillStyle = color;
+    ctx.fill();
+    // ctx.stroke();
+  // }
+}
+
+function drawPendulum() {
   let ball_pos = env.get_ball_pos();
   let x = ball_pos[0] * grid_size + canvas.width/2;
   let y = canvas.height - (ball_pos[1] * grid_size + canvas.height/2);
@@ -113,3 +148,47 @@ const drawPendulum = () => {
   ctx.fillStyle = ball_color;
   ctx.fill();
 };
+
+function mapRange(value, oldMin, oldMax, newMin, newMax) {
+  return ((value - oldMin) * (newMax - newMin) / (oldMax - oldMin)) + newMin;
+}
+
+function message_handler(event) {
+  console.log(event.data);
+  switch(event.data.op) {
+    case 'start':
+      let grav_factor = mapRange(event.data.difficulty, 0, 100, 0, 5);
+      console.log("grav_factor: " + grav_factor);
+      env.set_gravity_factor(grav_factor);
+      play();
+      window.parent.postMessage({op: "started", verb: "Balance!"});
+      break;
+    default:
+  }
+}
+
+function update_countdown() {
+  countdown -= 1;
+  if(countdown > 0) {
+    setTimeout(update_countdown, 1000);
+  }
+  else {
+    gameover = true; 
+    window.parent.postMessage({op: "done", win: power_level >= 0.5});
+  }
+}
+
+function update_power_bar() {
+  let ball_pos = env.get_ball_pos();
+  let direction = -2;
+  if(ball_pos[1] > 0) {
+    direction = 1;
+  }
+  let scale = 0.025;
+  power_level += (scale * direction);
+  power_level = Math.max(Math.min(power_level, 1), 0);
+  setTimeout(update_power_bar, 120);
+}
+
+window.addEventListener("message", message_handler);
+window.parent.postMessage({op: "ready"});

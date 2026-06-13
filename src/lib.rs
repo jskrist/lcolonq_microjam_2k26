@@ -55,7 +55,7 @@ impl Environment {
         let ground_collider: Collider = ColliderBuilder::cuboid(100.0, 0.1).mass(100.0).build();
         collider_set.insert(ground_collider);
 
-        let grav_factor = 2.0;
+        let grav_factor = 1.0;
         /* Create other structures necessary for the simulation. */
         let gravity: Vec2 = vector![0.0, -9.81 * grav_factor].into();
         let integration_parameters = IntegrationParameters::default();
@@ -109,6 +109,11 @@ impl Environment {
     pub fn set_dt(&mut self, dt: f32) {
         self.integration_parameters.dt = dt;
     }
+    pub fn set_gravity_factor(&mut self, g_factor: f32) {
+        if g_factor > 0.0 {
+            self.gravity[1] = -9.8 * g_factor;
+        }
+    }
     pub fn get_pivot_pos(& self) -> Vec<f32> {
         if let Some(body) = self.rigid_body_set.get(self.pendulum.pivot) {
             body.position().translation.to_array().to_vec()
@@ -155,8 +160,8 @@ impl Environment {
 
         let rigid_body =
             RigidBodyBuilder::new(RigidBodyType::Dynamic)
-            .translation(Vector::new(0.1, rod_length + character_height));
-            // .linear_damping(1.25);
+            .translation(Vector::new(0.1, rod_length + character_height))
+            .linear_damping(1.0);
             // .angular_damping(1000.0);
         let collider = ColliderBuilder::ball(rad).sensor(true).mass(2.3);
 
@@ -165,7 +170,7 @@ impl Environment {
 
         let joint = RevoluteJointBuilder::new()
             .local_anchor2(Vector::new(0.0, -rod_length));
-            // .motor_velocity(0.00, 1e2);
+            // .motor_velocity(0.00, 5e2);
         self.impulse_joint_set.insert(character_rb_handle, ball_rb_handle, joint, true);
 
         self.pendulum.pivot = character_rb_handle;
