@@ -110,19 +110,15 @@ function drawPowerBar() {
   ctx.fillStyle = "gray";
   ctx.fillRect(canvas.width - powerbar_w, 0, powerbar_w, canvas.height);
   let color = "red";
-  // for(let i = 0; i < num_cells; i++) {
-    let i = Math.floor(power_level * num_cells);
-    h = canvas.height - (Math.max(i, 1) * cell_height);
-    ctx.beginPath();
-    ctx.rect(canvas.width - powerbar_w, h, powerbar_w, cell_height);
-    if((i / num_cells) >= 0.5){
-      color = "green";
-    }
-    // console.log("power_level: " + power_level + "\n val: " + (i / num_cells) + "\ncolor: " + color)
-    ctx.fillStyle = color;
-    ctx.fill();
-    // ctx.stroke();
-  // }
+  let i = Math.floor(power_level * num_cells);
+  h = canvas.height - (Math.max(i, 1) * cell_height);
+  ctx.beginPath();
+  ctx.rect(canvas.width - powerbar_w, h, powerbar_w, cell_height);
+  if((i / num_cells) >= 0.5){
+    color = "green";
+  }
+  ctx.fillStyle = color;
+  ctx.fill();
 }
 
 function drawPendulum() {
