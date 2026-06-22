@@ -8,32 +8,82 @@ const wasm = await init("./pkg/lcolonq_codejam_bg.wasm");
 // Construct the environment and create a pendulum.
 const env = Environment.new();
 env.add_bodies();
-const width = 240;
-const height = 160;
 const y_divs = (env.pendulum.get_length() * 2) + 2;
-const grid_size = height / y_divs;
 const canvas = document.getElementById("canvas");
-canvas.height = height;
-canvas.width = width;
-const ctx = canvas.getContext('2d');
-const rect = canvas.getBoundingClientRect();
 
+const MINFRAMERATE = Math.floor(1000/30);
+// const width = 240;
+// const height = 160;
+let width = null;
+let height = null;
+let grid_size = null;
 let power_level = null;
 let countdown = null;
 let gameover = null;
+let is_playing = false;
 let mouse_pos = null;
+let powerbar_timeout = null;
+let countdown_timeout = null;
+let headsup_timeout = null;
+let rect = null;
+let start_time = 0;
+let heads_up_dt = 0;
+const ctx = canvas.getContext('2d');
+window_resize([]);
+
+function draw_scene() {
+    drawBackground();
+    drawCountdown();
+    drawPowerBar();
+    drawPendulum();
+}
+
+
+function window_resize(event) {
+  width = Math.floor(document.body.clientWidth * 1);
+  height = Math.floor(document.body.clientHeight * 1);
+  if(width/height < 3/2) {
+      height = width * 2/3;
+  }
+  else {
+      width = height * 3/2;
+  }
+
+  grid_size = height / y_divs;
+  canvas.height = height;
+  canvas.width = width;
+  rect = canvas.getBoundingClientRect();
+  if(!powerbar_timeout) {
+    draw_scene();
+    mouse_pos = [0, 0];
+  }
+}
+window.addEventListener("resize", window_resize);
+
 
 function reset() {
+  if(powerbar_timeout) {
+    clearTimeout(powerbar_timeout);
+    powerbar_timeout = null;
+  }
+  if(countdown_timeout) {
+    clearTimeout(countdown_timeout);
+    countdown_timeout = null;
+  }
+  if(headsup_timeout) {
+    clearTimeout(headsup_timeout);
+    headsup_timeout = null;
+  }
   power_level = 0.5;
   countdown = 20;
   env.reset_scene();
-  drawBackground();
-  drawCountdown();
-  drawPowerBar();
-  drawPendulum();
+  draw_scene();
 
+  is_playing = false;
   gameover = false;
+  heads_up_dt = 0;
   mouse_pos = [0, 0];
+  start_time = performance.now();
 }
 reset();
 
@@ -49,8 +99,10 @@ function mouse_move_fcn(event) {
 
 document.addEventListener('mousemove', mouse_move_fcn);
 
-let start_time = 0;
 function renderLoop(current_time) {
+  if(!is_playing) {
+    return
+  }
   if(current_time) {
     // limit the simulations to at most 100ms time steps
     let dt = Math.min(current_time - start_time, 100);
@@ -58,37 +110,20 @@ function renderLoop(current_time) {
     env.set_dt(dt / 1000.0);
     env.step(mouse_pos[0]);
     // console.log("fps: " + 1000/dt)
-    drawBackground();
-    drawCountdown();
-    drawPowerBar();
-    drawPendulum();
+    draw_scene();
   }
-  if(!gameover) {
+  if(is_playing && !gameover) {
     requestAnimationFrame(renderLoop);
   }
 };
 
 function play() {
-  setTimeout(update_power_bar, 120);
-  setTimeout(update_countdown, 1000);
+  powerbar_timeout = setTimeout(update_power_bar, 120);
+  countdown_timeout = setTimeout(update_countdown, 1000);
+  is_playing = true;
   renderLoop();
 };
 
-const btn_width = 40;
-const btn_height = 20;
-let btn_x = canvas.width/2 - btn_width/2;
-let btn_y = canvas.height/2 - btn_height/2;
-function click_fcn(event) {
-  let click_x = event.clientX - rect.left;
-  let click_y = (event.clientY - rect.top)
-  if(click_x > btn_x && click_x < btn_x + btn_width && 
-    click_y > btn_y && click_y < btn_y + btn_height) {
-      play();
-      mouse_move_fcn(event);
-      canvas.removeEventListener('click', click_fcn);
-  }
-}
-canvas.addEventListener('click', click_fcn);
 
 function drawBackground() {
   ctx.fillStyle = "white";
@@ -97,13 +132,14 @@ function drawBackground() {
 
 function drawCountdown() {
   ctx.fillStyle = "black";
-  ctx.font = "16px Consolas";
-  ctx.fillText(String(countdown).padStart(2, '0'), 10, 20);
+  let font_height = Math.floor(height/10);
+  ctx.font = Math.floor(height/10) + "px Consolas";
+  ctx.fillText(String(countdown).padStart(2, '0'), 10, font_height);
 }
 
 function drawPowerBar() {
   ctx.fillStyle = "gray";
-  let powerbar_w = 10;
+  let powerbar_w = 1/24*width;
   const num_cells = 20;
   const cell_height = canvas.height / num_cells;
   let h = 0;
@@ -163,20 +199,42 @@ function message_handler(event) {
       let grav_factor = mapRange(event.data.difficulty, 0, 100, 0, 5);
       env.set_gravity_factor(grav_factor);
       reset();
-      play();
+      headsup_timeout = setTimeout(player_heads_up, 1/30);
       window.parent.postMessage({op: "started", verb: "Balance!"});
       break;
     default:
   }
 }
 
+function player_heads_up() {
+  heads_up_dt = heads_up_dt + MINFRAMERATE;
+  console.log("dt: " + heads_up_dt);
+  let radius = (Math.sin(Math.PI / 1000 * heads_up_dt) + 1) / 2;
+  draw_scene();
+  let x = canvas.width/2;
+  let y = canvas.height/2;
+  // draw indicator circle
+  ctx.beginPath();
+  ctx.arc(x, y, radius * grid_size/2, 0, 2 * Math.PI);
+  ctx.stroke();
+  if(heads_up_dt > 3000) {
+    start_time = performance.now();
+    play();
+  }
+  else {
+    headsup_timeout = setTimeout(player_heads_up, MINFRAMERATE);
+  }
+};
+
 function update_countdown() {
   countdown -= 1;
   if(countdown > 0) {
-    setTimeout(update_countdown, 1000);
+    countdown_timeout = setTimeout(update_countdown, 1000);
   }
   else {
-    gameover = true; 
+    is_playing = false;
+    gameover = true;
+    draw_scene();
     window.parent.postMessage({op: "done", win: power_level >= 0.5});
   }
 }
@@ -185,13 +243,13 @@ function update_power_bar() {
   let ball_pos = env.get_ball_pos();
   let direction = -2;
   if(ball_pos[1] > 0) {
-    direction = 1;
+    direction = 0.75;
   }
   let scale = 0.025;
   power_level += (scale * direction);
   power_level = Math.max(Math.min(power_level, 1), 0);
   if(!gameover) {
-    setTimeout(update_power_bar, 120);
+    powerbar_timeout = setTimeout(update_power_bar, 120);
   }
 }
 
